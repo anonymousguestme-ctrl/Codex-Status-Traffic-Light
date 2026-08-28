@@ -67,3 +67,15 @@
 - 当前机器未安装 `arduino-cli`，因此本轮无法执行命令行固件编译；README 已提供 Arduino IDE
   验证与上传步骤，实物板仍需连接后完成最终硬件验收。
 - 下一步：检查暂存内容、创建提交并推送 `origin/main`。
+
+## 步骤 8：GitHub 提交与推送（完成）
+
+- 已使用仓库本地 Git 身份 `anonymousguestme-ctrl` 创建提交。
+- 首次项目提交：`f7502ce52fe719e015b0a61824e7ff98cc41a51a`，提交说明为
+  `Build Codex approval traffic light`。
+- 已通过普通 fast-forward 推送到 `origin/main`：`3f6222f..f7502ce`，未使用 force push。
+- `git ls-remote` 已确认 GitHub `main` 指向 `f7502ce52fe719e015b0a61824e7ff98cc41a51a`。
+- GitHub 仓库确认公开，默认分支为 `main`：
+  `https://github.com/anonymousguestme-ctrl/Codex-Traffic-Light`。
+- 用户硬件选择补充：Arduino IDE 应选择 `Arduino AVR Boards -> Arduino Uno`；ATmega328P
+  不需要额外处理器选项，CH340 兼容版仍选择 Arduino Uno。
