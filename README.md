@@ -1,4 +1,4 @@
-# Codex 工作状态交通灯｜工作绿、审批黄、完成红
+# Codex Status Traffic Light｜Codex 工作状态交通灯
 
 > Codex 正在干活时亮绿灯；需要你审查或审批时亮黄灯；完成本轮工作、处于空闲或监听异常时亮红灯。
 
@@ -132,8 +132,8 @@ codex --version
 ### 下载本项目
 
 ```powershell
-git clone https://github.com/anonymousguestme-ctrl/Codex-Traffic-Light.git
-cd Codex-Traffic-Light
+git clone https://github.com/anonymousguestme-ctrl/Codex-Status-Traffic-Light.git
+cd Codex-Status-Traffic-Light
 ```
 
 也可以直接从 GitHub 下载 ZIP，解压后进入目录。
@@ -495,7 +495,7 @@ Codex 状态查询间隔，默认 0.75 秒：
 4. 目标填写：
 
 ```text
-powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\你的路径\Codex-Traffic-Light\start.ps1"
+powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\你的路径\Codex-Status-Traffic-Light\start.ps1"
 ```
 
 5. 将路径替换成真实项目路径；
@@ -575,7 +575,7 @@ powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "G:\codex-traff
 ## 项目目录说明
 
 ```text
-Codex-Traffic-Light/
+Codex-Status-Traffic-Light/
 ├─ firmware/
 │  └─ codex_traffic_light/
 │     └─ codex_traffic_light.ino   # Arduino Uno 固件
