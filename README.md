@@ -1,4 +1,20 @@
-# Codex Status Traffic Light｜Codex 工作状态交通灯
+# Codex Status Traffic Light | Codex 工作状态交通灯
+
+## English
+
+An Arduino Uno traffic light that shows the live state of Codex CLI sessions:
+
+- **Green**: Codex is actively working.
+- **Yellow**: Codex is waiting for a human review or approval (`PermissionRequest`).
+- **Red**: the session is finished, idle, or the monitor cannot read state.
+
+The monitor uses local Codex lifecycle hooks and privacy-minimal state markers. It does not upload transcripts or call the OpenAI API. On Windows, hook markers are stored under `%USERPROFILE%\\.codex\\traffic-light\\sessions` so hooks remain writable when Codex runs in a restricted workspace.
+
+`codex-wenwen` is supported when it delegates to `codex --profile wenwen`; the same user-level hooks are used.
+
+See the Chinese guide below for wiring, installation, troubleshooting, and Arduino upload instructions.
+
+## 中文
 
 > Codex 正在干活时亮绿灯；需要你审查或审批时亮黄灯；完成本轮工作、处于空闲或监听异常时亮红灯。
 

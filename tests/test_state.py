@@ -84,6 +84,26 @@ class StateTests(unittest.TestCase):
             append("task_complete")
             self.assertEqual(tracker.poll(now), {"finished"})
 
+    def test_transcript_tracker_limits_states_to_active_terminal_count(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            sessions_dir = Path(temporary) / "sessions"
+            sessions_dir.mkdir()
+            tracker = MODULE.TranscriptTracker(sessions_dir, 7200)
+            now = time.time()
+            date = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).date().isoformat()
+            for index, event_type in enumerate(("task_complete", "task_started")):
+                path = sessions_dir / f"rollout-{date}-test-{index}.jsonl"
+                value = {
+                    "timestamp": __import__("datetime").datetime.fromtimestamp(
+                        now + index, __import__("datetime").timezone.utc
+                    ).isoformat(),
+                    "type": "event_msg",
+                    "payload": {"type": event_type},
+                }
+                path.write_text(json.dumps(value) + "\n", encoding="utf-8")
+            self.assertEqual(tracker.poll(now + 2), {"working", "finished"})
+            self.assertEqual(tracker.poll(now + 2, active_session_limit=1), {"working"})
+
 
 if __name__ == "__main__":
     unittest.main()

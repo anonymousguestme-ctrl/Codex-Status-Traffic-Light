@@ -4,7 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
+import os
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -15,7 +19,9 @@ import serial
 from serial.tools import list_ports
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_HOOK_STATE_DIR = PROJECT_ROOT / "runtime" / "sessions"
+# Hooks run inside Codex's restricted environment. Keep state under CODEX_HOME,
+# which remains writable even when the active workspace is elsewhere.
+DEFAULT_HOOK_STATE_DIR = Path.home() / ".codex" / "traffic-light" / "sessions"
 STATE_TO_LIGHT = {"working": "GREEN", "approval": "YELLOW", "finished": "RED"}
 
 
@@ -27,6 +33,34 @@ class TranscriptTracker:
         self.max_age_seconds = max_age_seconds
         self.offsets: dict[Path, int] = {}
         self.states: dict[Path, tuple[str, float]] = {}
+        self._process_count = 0
+        self._process_count_checked_at = 0.0
+
+    def active_codex_process_count(self, now: float | None = None) -> int | None:
+        """Return active Codex CLI process count on Windows, cached for three seconds."""
+        if os.name != "nt":
+            return None
+        current_time = time.time() if now is None else now
+        if current_time - self._process_count_checked_at < 3.0:
+            return self._process_count
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FO", "CSV", "/NH"],
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            rows = csv.reader(io.StringIO(result.stdout))
+            self._process_count = sum(
+                1 for row in rows if row and row[0].lower().startswith("codex") and row[0].lower().endswith(".exe")
+            )
+            self._process_count_checked_at = current_time
+            return self._process_count
+        except (OSError, subprocess.SubprocessError):
+            return None
 
     @staticmethod
     def _event_state(value: dict) -> tuple[str, float] | None:
@@ -47,7 +81,7 @@ class TranscriptTracker:
             updated = time.time()
         return state, updated
 
-    def poll(self, now: float | None = None) -> set[str]:
+    def poll(self, now: float | None = None, active_session_limit: int | None = None) -> set[str]:
         current_time = time.time() if now is None else now
         if not self.sessions_dir.is_dir():
             return set()
@@ -81,18 +115,25 @@ class TranscriptTracker:
                     self.offsets[path] = stream.tell()
             except OSError:
                 continue
-        active: set[str] = set()
+        active_records: list[tuple[str, float]] = []
         for path, (state, updated) in list(self.states.items()):
             if current_time - updated <= self.max_age_seconds:
-                active.add(state)
+                active_records.append((state, updated))
             else:
                 self.states.pop(path, None)
-        return active
+        active_records.sort(key=lambda item: item[1], reverse=True)
+        if active_session_limit is not None:
+            active_records = active_records[:active_session_limit]
+        return {state for state, _ in active_records}
 
 
 def hook_states(state_dir: Path, max_age_seconds: float, now: float | None = None) -> set[str]:
     """Aggregate all Codex sessions into one light: approval > working > finished."""
-    if not (state_dir.parent / "hooks-installed.json").is_file():
+    install_markers = (
+        state_dir.parent / "hooks-installed.json",
+        PROJECT_ROOT / "runtime" / "hooks-installed.json",
+    )
+    if not any(marker.is_file() for marker in install_markers if marker == state_dir.parent / "hooks-installed.json" or state_dir == DEFAULT_HOOK_STATE_DIR):
         raise RuntimeError("Codex CLI hooks 尚未安装；请先运行 .\\install-hooks.ps1")
     current_time = time.time() if now is None else now
     states: set[str] = set()
@@ -112,6 +153,8 @@ def hook_states(state_dir: Path, max_age_seconds: float, now: float | None = Non
 
 
 def aggregate_light(states: set[str]) -> str:
+    if not states:
+        return "RED"
     if "approval" in states:
         return "YELLOW"
     if "working" in states:
@@ -174,7 +217,8 @@ def run(settings: Settings, dry_run: bool = False, once: bool = False) -> int:
         while True:
             try:
                 states = hook_states(state_dir, settings.hook_state_max_age_seconds)
-                states.update(transcript_tracker.poll())
+                process_count = transcript_tracker.active_codex_process_count()
+                states.update(transcript_tracker.poll(active_session_limit=process_count))
                 state = aggregate_light(states)
             except Exception as exc:
                 print(f"Codex CLI hook 状态读取失败：{exc}", file=sys.stderr)

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_STATE_DIR = PROJECT_ROOT / "runtime" / "sessions"
+DEFAULT_STATE_DIR = Path.home() / ".codex" / "traffic-light" / "sessions"
 VALID_STATES = ("working", "approval", "finished")
 
 
@@ -54,20 +54,42 @@ def remove_session(data: dict[str, Any]) -> None:
 
 def load_input() -> dict[str, Any]:
     content = sys.stdin.read()
-    return json.loads(content) if content.strip() else {}
+    if not content.strip():
+        return {}
+    try:
+        value = json.loads(content)
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def record_hook_error(exc: Exception) -> None:
+    """Keep hook diagnostics local without allowing them to fail Codex."""
+    try:
+        log_path = state_dir().parent / "hook-errors.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as stream:
+            stream.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S%z')} {type(exc).__name__}: {exc}\n")
+    except OSError:
+        pass
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=("set-working", "set-approval", "set-finished", "remove-session"))
     args = parser.parse_args()
-    data = load_input()
-    if args.action == "remove-session":
-        remove_session(data)
-    else:
-        set_state(data, args.action.removeprefix("set-"))
-    if data.get("hook_event_name") == "Stop":
-        print("{}")
+    try:
+        data = load_input()
+        if args.action == "remove-session":
+            remove_session(data)
+        else:
+            set_state(data, args.action.removeprefix("set-"))
+        if data.get("hook_event_name") == "Stop":
+            print("{}")
+    except Exception as exc:
+        # A telemetry/status hook must never turn a successful Codex tool call
+        # into a reported hook failure.
+        record_hook_error(exc)
     return 0
 
 
