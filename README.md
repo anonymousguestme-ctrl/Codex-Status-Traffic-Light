@@ -10,7 +10,7 @@ An Arduino Uno traffic light that shows the live state of Codex CLI sessions:
 
 The monitor uses local Codex lifecycle hooks and privacy-minimal state markers. It does not upload transcripts or call the OpenAI API. On Windows, hook markers are stored under `%USERPROFILE%\\.codex\\traffic-light\\sessions` so hooks remain writable when Codex runs in a restricted workspace.
 
-`codex-wenwen` is supported when it delegates to `codex --profile wenwen`; the same user-level hooks are used.
+Local PowerShell wrappers are supported when they delegate to the standard CLI. This includes `codex-wenwen` (`codex --profile wenwen`) and `codex-timi` (`codex --profile timi`); both reuse the same user-level hooks. The wrapper scripts, relay endpoints, and API keys remain local and are not part of this repository.
 
 See the Chinese guide below for wiring, installation, troubleshooting, and Arduino upload instructions.
 
