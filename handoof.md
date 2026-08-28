@@ -86,3 +86,35 @@
   改为更直白的 `Codex 等待审批提醒灯｜Arduino 实体红绿灯`。
 - 保留原有副标题，继续明确红灯、绿灯与黄灯各自代表的状态。
 - 未修改 GitHub 仓库名和地址，避免已有链接失效。
+
+## 步骤 10：改为监控 CMD/PowerShell Codex CLI（完成）
+
+- 用户明确目标：读取 CMD 或 PowerShell 窗口中运行的 Codex CLI 审批状态。
+- 复核发现旧版独立 app-server 查询不能保证取得另一个终端进程的实时审批态，因此旧方案已停用。
+- 依据官方 Codex Hooks 文档，改用稳定的 `PermissionRequest` 生命周期事件；该事件只在 Codex
+  准备真正请求审批时触发。
+- 新增 `hook_state.py`：审批出现时写本地状态标记，`PostToolUse`、`Stop`、会话开始/结束等
+  hook 负责清理标记。标记只含 session id、turn id、时间和事件名，不保存命令或会话正文。
+- 新增 `install_hooks.py` 与 `install-hooks.ps1`：安全合并用户级 `~/.codex/hooks.json`，保留
+  其他 hooks，已有文件会先备份，并支持 `-Uninstall`。
+- 已在本机安装到 `C:\Users\anony\.codex\hooks.json`。当前运行中的 Codex CLI 需要完全退出并
+  重新打开，首次加载时需审查并信任 hook 路径。
+- 模拟 `PermissionRequest` 后 DryRun 输出 `RED`；模拟 `PostToolUse` 清理后输出 `GREEN`。
+- Python 编译通过；状态测试 4 项、hook/安装器测试 3 项，合计 7 项全部通过。
+- README 已改写为 CMD/PowerShell Codex CLI hook 架构和安装步骤。
+- 当前硬件诊断只发现蓝牙 COM3/4/6/7，未发现 Arduino 或 CH340 串口；在系统识别开发板并
+  持续运行 `start.ps1` 之前，Arduino 固件超时亮黄灯属于预期行为。
+
+## 步骤 11：COM8 实物连接与后台监听（完成）
+
+- 用户确认开发板与交通灯已连接，端口为 COM8。
+- pyserial 已识别 `USB-SERIAL CH340 (COM8)`，硬件 ID 为 `VID:PID=1A86:7523`。
+- 以 115200 baud 打开 COM8 并发送 `PING`，Arduino 正确返回
+  `PONG CODEX_TRAFFIC_LIGHT_V1`，证明驱动、USB 数据链路和固件通信正常。
+- 已创建本机忽略文件 `config.json`，固定 `serial_port` 为 `COM8`。
+- 已在隐藏 PowerShell 中启动持续监听程序；启动器 PID 45888，Python 父子进程
+  PID 55616/9196，COM8 由监听程序持续占用。
+- 手动写入模拟审批标记后 DryRun 检测为 `RED`，持续 5 秒后清除标记，检测恢复为
+  `GREEN`，待处理标记数量为 0。
+- 当前 CMD 中已运行的 Codex 进程是在 hooks 安装前启动的；必须完全退出并重新运行
+  `codex`，审查并信任 hook 后，真实审批事件才能驱动红灯。

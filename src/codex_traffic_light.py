@@ -1,57 +1,47 @@
 #!/usr/bin/env python3
-"""Drive an Arduino traffic light from the local Codex app-server status."""
+"""Drive an Arduino traffic light from Codex CLI PermissionRequest hook state."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
-import queue
-import shutil
-import subprocess
 import sys
-import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import serial
 from serial.tools import list_ports
 
 
-DEFAULT_CODEX_PATH = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs/OpenAI/Codex/bin/codex.exe"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_HOOK_STATE_DIR = PROJECT_ROOT / "runtime" / "approvals"
 
 
-def active_flags(thread: dict[str, Any]) -> set[str]:
-    """Return active flags across current and older protocol shapes."""
-    status = thread.get("status", {})
-    if isinstance(status, str):
-        return {status}
-    if not isinstance(status, dict):
-        return set()
-    flags = status.get("activeFlags", status.get("active_flags", []))
-    if isinstance(flags, str):
-        return {flags}
-    return {str(flag) for flag in flags} if isinstance(flags, list) else set()
+def hook_requires_attention(
+    state_dir: Path,
+    max_age_seconds: float,
+    now: float | None = None,
+) -> bool:
+    """Return whether a Codex CLI PermissionRequest hook is currently pending."""
+    install_marker = state_dir.parent / "hooks-installed.json"
+    if not install_marker.is_file():
+        raise RuntimeError("Codex CLI hooks 尚未安装；请先运行 .\\install-hooks.ps1")
 
-
-def requires_attention(threads: list[dict[str, Any]], include_user_input: bool = False) -> bool:
-    wanted = {"waitingOnApproval"}
-    if include_user_input:
-        wanted.add("waitingOnUserInput")
-    return any(active_flags(thread) & wanted for thread in threads)
-
-
-def find_codex(configured: str) -> str:
-    if configured != "auto":
-        return configured
-    discovered = shutil.which("codex")
-    if discovered:
-        return discovered
-    if DEFAULT_CODEX_PATH.is_file():
-        return str(DEFAULT_CODEX_PATH)
-    raise FileNotFoundError("找不到 codex.exe；请在 config.json 中设置 codex_executable")
+    current_time = time.time() if now is None else now
+    pending = False
+    state_dir.mkdir(parents=True, exist_ok=True)
+    for marker in state_dir.glob("*.json"):
+        try:
+            age = current_time - marker.stat().st_mtime
+            if age > max_age_seconds:
+                marker.unlink(missing_ok=True)
+                continue
+            json.loads(marker.read_text(encoding="utf-8"))
+            pending = True
+        except (OSError, json.JSONDecodeError):
+            marker.unlink(missing_ok=True)
+    return pending
 
 
 def choose_serial_port(configured: str) -> str:
@@ -70,103 +60,13 @@ def choose_serial_port(configured: str) -> str:
     return candidates[0].device
 
 
-class JsonRpcClient:
-    def __init__(self, codex_executable: str) -> None:
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        self.process = subprocess.Popen(
-            [codex_executable, "app-server", "proxy"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            bufsize=1,
-            creationflags=creationflags,
-        )
-        self.responses: queue.Queue[dict[str, Any]] = queue.Queue()
-        self.next_id = 1
-        self.reader = threading.Thread(target=self._read_stdout, daemon=True)
-        self.reader.start()
-
-    def _read_stdout(self) -> None:
-        assert self.process.stdout is not None
-        for line in self.process.stdout:
-            try:
-                message = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if "id" in message:
-                self.responses.put(message)
-
-    def send(self, method: str, params: dict[str, Any], timeout: float = 5.0) -> Any:
-        request_id = self.next_id
-        self.next_id += 1
-        payload = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params}
-        assert self.process.stdin is not None
-        self.process.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
-        self.process.stdin.flush()
-        deadline = time.monotonic() + timeout
-        deferred: list[dict[str, Any]] = []
-        try:
-            while time.monotonic() < deadline:
-                response = self.responses.get(timeout=max(0.05, deadline - time.monotonic()))
-                if response.get("id") != request_id:
-                    deferred.append(response)
-                    continue
-                if "error" in response:
-                    raise RuntimeError(f"Codex RPC 错误：{response['error']}")
-                return response.get("result")
-        except queue.Empty as exc:
-            raise TimeoutError(f"等待 Codex RPC {method} 超时") from exc
-        finally:
-            for response in deferred:
-                self.responses.put(response)
-        raise TimeoutError(f"等待 Codex RPC {method} 超时")
-
-    def initialize(self) -> None:
-        self.send(
-            "initialize",
-            {
-                "clientInfo": {"name": "codex-traffic-light", "title": "Codex Traffic Light", "version": "1.0.0"},
-                "capabilities": {"experimentalApi": True},
-            },
-        )
-        assert self.process.stdin is not None
-        notification = {"jsonrpc": "2.0", "method": "initialized", "params": {}}
-        self.process.stdin.write(json.dumps(notification, separators=(",", ":")) + "\n")
-        self.process.stdin.flush()
-
-    def list_threads(self) -> list[dict[str, Any]]:
-        result = self.send(
-            "thread/list",
-            {
-                "archived": False,
-                "limit": 100,
-                "sortKey": "updated_at",
-                "sortDirection": "desc",
-                "useStateDbOnly": True,
-                "sourceKinds": [],
-            },
-        )
-        data = result.get("data", []) if isinstance(result, dict) else []
-        return data if isinstance(data, list) else []
-
-    def close(self) -> None:
-        if self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-
-
 @dataclass
 class Settings:
     serial_port: str = "auto"
     baud_rate: int = 115200
     poll_interval_seconds: float = 0.75
-    codex_executable: str = "auto"
-    include_waiting_on_user_input: bool = False
+    hook_state_dir: str = "auto"
+    hook_state_max_age_seconds: float = 7200
 
     @classmethod
     def load(cls, path: Path) -> "Settings":
@@ -183,11 +83,9 @@ def write_light(board: serial.Serial, state: str) -> None:
 
 
 def run(settings: Settings, dry_run: bool = False, once: bool = False) -> int:
-    codex = find_codex(settings.codex_executable)
-    rpc = JsonRpcClient(codex)
     board: serial.Serial | None = None
+    state_dir = DEFAULT_HOOK_STATE_DIR if settings.hook_state_dir == "auto" else Path(settings.hook_state_dir)
     try:
-        rpc.initialize()
         if not dry_run:
             port = choose_serial_port(settings.serial_port)
             print(f"Arduino 串口：{port}")
@@ -197,10 +95,12 @@ def run(settings: Settings, dry_run: bool = False, once: bool = False) -> int:
         previous = ""
         while True:
             try:
-                threads = rpc.list_threads()
-                state = "RED" if requires_attention(threads, settings.include_waiting_on_user_input) else "GREEN"
+                state = "RED" if hook_requires_attention(
+                    state_dir,
+                    settings.hook_state_max_age_seconds,
+                ) else "GREEN"
             except Exception as exc:  # Keep the physical warning state visible on transient errors.
-                print(f"Codex 状态读取失败：{exc}", file=sys.stderr)
+                print(f"Codex CLI hook 状态读取失败：{exc}", file=sys.stderr)
                 state = "YELLOW"
 
             if state != previous:
@@ -217,7 +117,6 @@ def run(settings: Settings, dry_run: bool = False, once: bool = False) -> int:
                 write_light(board, "YELLOW")
             finally:
                 board.close()
-        rpc.close()
 
 
 def parse_args() -> argparse.Namespace:

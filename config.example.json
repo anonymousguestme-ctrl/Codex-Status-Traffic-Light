@@ -2,6 +2,6 @@
   "serial_port": "auto",
   "baud_rate": 115200,
   "poll_interval_seconds": 0.75,
-  "codex_executable": "auto",
-  "include_waiting_on_user_input": false
+  "hook_state_dir": "auto",
+  "hook_state_max_age_seconds": 7200
 }

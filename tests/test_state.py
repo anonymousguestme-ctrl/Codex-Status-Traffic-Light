@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import sys
+import tempfile
+import time
 import unittest
 
 
@@ -13,18 +15,35 @@ SPEC.loader.exec_module(MODULE)
 
 
 class StateTests(unittest.TestCase):
-    def test_waiting_on_approval_is_red(self):
-        threads = [{"status": {"activeFlags": ["waitingOnApproval"]}}]
-        self.assertTrue(MODULE.requires_attention(threads))
+    def test_cli_hook_marker_is_red(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state_dir = Path(temporary) / "runtime" / "approvals"
+            state_dir.mkdir(parents=True)
+            (state_dir.parent / "hooks-installed.json").write_text("{}", encoding="utf-8")
+            (state_dir / "session__turn.json").write_text('{"session_id":"session"}', encoding="utf-8")
+            self.assertTrue(MODULE.hook_requires_attention(state_dir, 7200))
 
-    def test_idle_is_green(self):
-        threads = [{"status": {"activeFlags": []}}]
-        self.assertFalse(MODULE.requires_attention(threads))
+    def test_cli_hook_without_pending_marker_is_green(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state_dir = Path(temporary) / "runtime" / "approvals"
+            (state_dir.parent).mkdir(parents=True)
+            (state_dir.parent / "hooks-installed.json").write_text("{}", encoding="utf-8")
+            self.assertFalse(MODULE.hook_requires_attention(state_dir, 7200))
 
-    def test_user_input_is_optional(self):
-        threads = [{"status": {"activeFlags": ["waitingOnUserInput"]}}]
-        self.assertFalse(MODULE.requires_attention(threads))
-        self.assertTrue(MODULE.requires_attention(threads, include_user_input=True))
+    def test_stale_hook_marker_is_removed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state_dir = Path(temporary) / "runtime" / "approvals"
+            state_dir.mkdir(parents=True)
+            (state_dir.parent / "hooks-installed.json").write_text("{}", encoding="utf-8")
+            marker = state_dir / "session__turn.json"
+            marker.write_text("{}", encoding="utf-8")
+            self.assertFalse(MODULE.hook_requires_attention(state_dir, 10, now=time.time() + 20))
+            self.assertFalse(marker.exists())
+
+    def test_missing_hook_installation_is_yellow_error(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaises(RuntimeError):
+                MODULE.hook_requires_attention(Path(temporary) / "approvals", 7200)
 
 
 if __name__ == "__main__":
