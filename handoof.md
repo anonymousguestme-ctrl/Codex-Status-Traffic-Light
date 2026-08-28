@@ -79,3 +79,10 @@
   `https://github.com/anonymousguestme-ctrl/Codex-Traffic-Light`。
 - 用户硬件选择补充：Arduino IDE 应选择 `Arduino AVR Boards -> Arduino Uno`；ATmega328P
   不需要额外处理器选项，CH340 兼容版仍选择 Arduino Uno。
+
+## 步骤 9：README 标题优化（完成）
+
+- README 主标题由较抽象的 `Codex Traffic Light：为了少盯屏幕而做的实体审批信号灯`
+  改为更直白的 `Codex 等待审批提醒灯｜Arduino 实体红绿灯`。
+- 保留原有副标题，继续明确红灯、绿灯与黄灯各自代表的状态。
+- 未修改 GitHub 仓库名和地址，避免已有链接失效。
