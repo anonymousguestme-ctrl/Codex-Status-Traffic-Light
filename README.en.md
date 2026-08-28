@@ -95,7 +95,7 @@ Normal output is `Signal light: GREEN`, `YELLOW`, or `RED` (localized output is 
 .\start.ps1
 ```
 
-The process polls every 0.75 seconds, sends heartbeats to the Arduino, and returns the firmware to red on exit. `Ctrl+C` stops the foreground process. `start-background.ps1` starts a hidden background listener.
+The process polls every 0.75 seconds, sends heartbeats to the Arduino, and returns the firmware to red on exit. `Ctrl+C` stops the foreground process. `start-background.ps1` prepares the virtual environment, installs hooks when needed, checks for an existing listener, and starts a hidden background listener.
 
 ## Configuration
 

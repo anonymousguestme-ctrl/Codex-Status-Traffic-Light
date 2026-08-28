@@ -2,11 +2,22 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$StartScript = Join-Path $ProjectDir 'start.ps1'
+$Installer = Join-Path $ProjectDir 'src\install_hooks.py'
+$VenvPython = Join-Path $ProjectDir '.venv\Scripts\python.exe'
 $Pythonw = Join-Path $ProjectDir '.venv\Scripts\pythonw.exe'
 $App = Join-Path $ProjectDir 'src\codex_traffic_light.py'
 
-if (-not (Test-Path -LiteralPath $Pythonw)) {
-    throw "Python environment is missing. Run $ProjectDir\start.ps1 once first."
+if (-not (Test-Path -LiteralPath $StartScript)) { throw "Missing startup script: $StartScript" }
+if (-not (Test-Path -LiteralPath $VenvPython)) { & $StartScript -DryRun -Once }
+if (-not (Test-Path -LiteralPath $VenvPython)) { throw "Python environment is missing: $VenvPython" }
+
+# Install the project hooks on first launch. The installer preserves unrelated
+# user hooks and refreshes the Codex trust definition when necessary.
+$InstallMarker = Join-Path $ProjectDir 'runtime\hooks-installed.json'
+if (-not (Test-Path -LiteralPath $InstallMarker)) {
+    & $VenvPython $Installer
+    if ($LASTEXITCODE -ne 0) { throw "Codex hook installation failed." }
 }
 
 if (-not (Test-Path -LiteralPath $App)) {
