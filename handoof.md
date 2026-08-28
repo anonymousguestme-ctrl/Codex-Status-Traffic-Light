@@ -140,3 +140,4 @@
 - 已停止旧监听器，使用 `arduino:avr:uno` 编译固件并成功上传到 COM8；串口 `PING` 返回 `PONG CODEX_TRAFFIC_LIGHT_V1`。
 - 已启动新版隐藏监听器（PowerShell PID 48924），并依次模拟验证 `working → GREEN`、`approval → YELLOW`、`finished → RED`；最终保留红灯状态。
 - 注意：安装 hooks 前已经打开的 Codex CLI 进程需要完全退出并重新运行 `codex`，新生命周期 hooks 才能稳定接管真实会话。
+- 三态版本已提交并推送 GitHub `main`，功能提交为 `94805e5`（`Map Codex work approval and completion to three lights`）。
