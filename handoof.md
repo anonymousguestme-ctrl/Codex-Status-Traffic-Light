@@ -150,3 +150,4 @@
 - 自动测试增加到 9 项并全部通过；当前真实会话干跑结果为 `GREEN`。
 - 已停止旧后台监听器，改用独立隐藏的 `pythonw.exe` 监听进程 PID 1852；当前真实会话为工作中，COM8 持续接收绿灯心跳。
 - rollout 读取只扫描最近两天最多 20 个会话并保持增量偏移，避免反复读取历史大文件。
+- 无需重启兼容修复已推送 GitHub `main`，功能提交为 `f275dff`（`Track live Codex task lifecycle without restart`）。
