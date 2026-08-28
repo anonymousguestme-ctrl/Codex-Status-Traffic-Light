@@ -590,7 +590,6 @@ Codex-Traffic-Light/
 ├─ requirements.txt                # Python 依赖
 ├─ install-hooks.ps1               # 安装/卸载 Codex CLI hooks
 ├─ start.ps1                       # Windows 一键启动脚本
-├─ handoof.md                      # 开发与交付记录
 ├─ LICENSE
 └─ README.md
 ```

@@ -4,6 +4,8 @@ __pycache__/
 config.json
 runtime/
 tools/
+handoff.md
+handoof.md
 .idea/
 .vscode/
 *.log
