@@ -57,6 +57,33 @@ class StateTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 MODULE.hook_light_state(Path(temporary) / "sessions", 7200)
 
+    def test_transcript_tracker_follows_task_lifecycle(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            sessions_dir = Path(temporary) / "sessions"
+            sessions_dir.mkdir()
+            rollout_date = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).date()
+            rollout = sessions_dir / f"rollout-{rollout_date.isoformat()}-test.jsonl"
+            tracker = MODULE.TranscriptTracker(sessions_dir, 7200)
+            now = time.time()
+
+            def append(event_type):
+                value = {
+                    "timestamp": __import__("datetime").datetime.fromtimestamp(
+                        now, __import__("datetime").timezone.utc
+                    ).isoformat(),
+                    "type": "event_msg",
+                    "payload": {"type": event_type, "message": "must not be read"},
+                }
+                with rollout.open("a", encoding="utf-8") as stream:
+                    stream.write(json.dumps(value) + "\n")
+
+            append("task_started")
+            self.assertEqual(tracker.poll(now), {"working"})
+            append("exec_approval_request")
+            self.assertEqual(tracker.poll(now), {"approval"})
+            append("task_complete")
+            self.assertEqual(tracker.poll(now), {"finished"})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -388,7 +388,8 @@ Copy-Item .\config.example.json .\config.json
   "baud_rate": 115200,
   "poll_interval_seconds": 0.75,
   "hook_state_dir": "auto",
-  "hook_state_max_age_seconds": 7200
+  "hook_state_max_age_seconds": 7200,
+  "codex_sessions_dir": "auto"
 }
 ```
 
@@ -448,6 +449,16 @@ Codex 状态查询间隔，默认 0.75 秒：
 
 每次 hook 都会覆盖该会话的最新状态。这个超时用于 Codex 被强制结束、电脑崩溃等没有机会触发结束 hook 的情况；状态过期后按“完成/空闲”显示红灯。
 
+### `codex_sessions_dir`
+
+默认的 `auto` 表示增量读取当前用户的 `~/.codex/sessions` 本地事件流：
+
+```json
+"codex_sessions_dir": "auto"
+```
+
+它让监听器即使面对安装 hooks 之前已经打开的 Codex CLI，也能根据 `task_started` 和 `task_complete` 判断工作中与完成。程序只检查事件类型和时间戳，不使用或保存消息正文。通常不需要修改。
+
 ---
 
 ## 第八步：验证完整效果
@@ -506,7 +517,7 @@ powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "G:\codex-traff
 
 ## 它到底如何判断 Codex 状态？
 
-电脑端不会截图，不做 OCR，也不读取 CMD/PowerShell 屏幕文字。它使用 Codex 官方生命周期 hooks。
+电脑端不会截图，不做 OCR，也不读取 CMD/PowerShell 屏幕文字。它同时使用 Codex 官方生命周期 hooks 和本机 `~/.codex/sessions` 事件流：hooks 精确捕获审批，事件流补充捕获真实任务开始与完成，尤其适用于安装 hooks 前已经打开的 CLI。
 
 本项目将官方 hook 事件映射为三个状态：
 
@@ -518,6 +529,14 @@ powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "G:\codex-traff
 | `Stop` | `finished` | 红灯 |
 | `SessionStart` | `finished` | 红灯 |
 | `SessionEnd` | 删除该会话状态 | 由其余会话决定；无会话时红灯 |
+
+事件流的补充映射为：
+
+| 本地事件 | 灯色 |
+|---|---|
+| `task_started` | 绿灯 |
+| `task_complete` 或 `turn_aborted` | 红灯 |
+| 名称同时包含 `approval` 和 `request` 的审批事件 | 黄灯 |
 
 每个 Codex 会话在 `runtime/sessions` 下只有一个很小的 JSON 状态文件，只包含：
 
@@ -590,7 +609,7 @@ Codex-Traffic-Light/
 预期结果：
 
 ```text
-Ran 8 tests
+Ran 9 tests
 OK
 ```
 

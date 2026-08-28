@@ -8,6 +8,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import serial
@@ -18,7 +19,78 @@ DEFAULT_HOOK_STATE_DIR = PROJECT_ROOT / "runtime" / "sessions"
 STATE_TO_LIGHT = {"working": "GREEN", "approval": "YELLOW", "finished": "RED"}
 
 
-def hook_light_state(state_dir: Path, max_age_seconds: float, now: float | None = None) -> str:
+class TranscriptTracker:
+    """Incrementally follow local Codex rollout events without reading message text."""
+
+    def __init__(self, sessions_dir: Path, max_age_seconds: float):
+        self.sessions_dir = sessions_dir
+        self.max_age_seconds = max_age_seconds
+        self.offsets: dict[Path, int] = {}
+        self.states: dict[Path, tuple[str, float]] = {}
+
+    @staticmethod
+    def _event_state(value: dict) -> tuple[str, float] | None:
+        payload = value.get("payload", {})
+        event_type = str(payload.get("type", ""))
+        if event_type == "task_started":
+            state = "working"
+        elif event_type in ("task_complete", "turn_aborted"):
+            state = "finished"
+        elif "approval" in event_type.lower() and "request" in event_type.lower():
+            state = "approval"
+        else:
+            return None
+        timestamp = value.get("timestamp")
+        try:
+            updated = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).timestamp()
+        except (TypeError, ValueError):
+            updated = time.time()
+        return state, updated
+
+    def poll(self, now: float | None = None) -> set[str]:
+        current_time = time.time() if now is None else now
+        if not self.sessions_dir.is_dir():
+            return set()
+        # Rollout paths include YYYY/MM/DD, so the newest filenames cover active sessions
+        # even while Windows delays updating an open file's mtime.
+        cutoff_date = datetime.fromtimestamp(current_time, timezone.utc).date() - timedelta(days=1)
+        candidates = []
+        for path in self.sessions_dir.rglob("rollout-*.jsonl"):
+            try:
+                rollout_date = datetime.strptime(path.name[8:18], "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if rollout_date >= cutoff_date:
+                candidates.append(path)
+        candidates = sorted(candidates, reverse=True)[:20]
+        for path in candidates:
+            try:
+                size = path.stat().st_size
+                offset = self.offsets.get(path, 0)
+                if size < offset:
+                    offset = 0
+                with path.open("r", encoding="utf-8") as stream:
+                    stream.seek(offset)
+                    for line in stream:
+                        try:
+                            event = self._event_state(json.loads(line))
+                            if event is not None:
+                                self.states[path] = event
+                        except json.JSONDecodeError:
+                            continue
+                    self.offsets[path] = stream.tell()
+            except OSError:
+                continue
+        active: set[str] = set()
+        for path, (state, updated) in list(self.states.items()):
+            if current_time - updated <= self.max_age_seconds:
+                active.add(state)
+            else:
+                self.states.pop(path, None)
+        return active
+
+
+def hook_states(state_dir: Path, max_age_seconds: float, now: float | None = None) -> set[str]:
     """Aggregate all Codex sessions into one light: approval > working > finished."""
     if not (state_dir.parent / "hooks-installed.json").is_file():
         raise RuntimeError("Codex CLI hooks 尚未安装；请先运行 .\\install-hooks.ps1")
@@ -36,11 +108,19 @@ def hook_light_state(state_dir: Path, max_age_seconds: float, now: float | None 
             states.add(state)
         except (OSError, ValueError, json.JSONDecodeError):
             marker.unlink(missing_ok=True)
+    return states
+
+
+def aggregate_light(states: set[str]) -> str:
     if "approval" in states:
         return "YELLOW"
     if "working" in states:
         return "GREEN"
     return "RED"
+
+
+def hook_light_state(state_dir: Path, max_age_seconds: float, now: float | None = None) -> str:
+    return aggregate_light(hook_states(state_dir, max_age_seconds, now))
 
 
 def choose_serial_port(configured: str) -> str:
@@ -64,6 +144,7 @@ class Settings:
     poll_interval_seconds: float = 0.75
     hook_state_dir: str = "auto"
     hook_state_max_age_seconds: float = 7200
+    codex_sessions_dir: str = "auto"
 
     @classmethod
     def load(cls, path: Path) -> "Settings":
@@ -81,6 +162,8 @@ def write_light(board: serial.Serial, state: str) -> None:
 def run(settings: Settings, dry_run: bool = False, once: bool = False) -> int:
     board: serial.Serial | None = None
     state_dir = DEFAULT_HOOK_STATE_DIR if settings.hook_state_dir == "auto" else Path(settings.hook_state_dir)
+    sessions_dir = Path.home() / ".codex" / "sessions" if settings.codex_sessions_dir == "auto" else Path(settings.codex_sessions_dir)
+    transcript_tracker = TranscriptTracker(sessions_dir, settings.hook_state_max_age_seconds)
     try:
         if not dry_run:
             port = choose_serial_port(settings.serial_port)
@@ -90,7 +173,9 @@ def run(settings: Settings, dry_run: bool = False, once: bool = False) -> int:
         previous = ""
         while True:
             try:
-                state = hook_light_state(state_dir, settings.hook_state_max_age_seconds)
+                states = hook_states(state_dir, settings.hook_state_max_age_seconds)
+                states.update(transcript_tracker.poll())
+                state = aggregate_light(states)
             except Exception as exc:
                 print(f"Codex CLI hook 状态读取失败：{exc}", file=sys.stderr)
                 state = "RED"

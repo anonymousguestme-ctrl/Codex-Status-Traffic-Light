@@ -141,3 +141,12 @@
 - 已启动新版隐藏监听器（PowerShell PID 48924），并依次模拟验证 `working → GREEN`、`approval → YELLOW`、`finished → RED`；最终保留红灯状态。
 - 注意：安装 hooks 前已经打开的 Codex CLI 进程需要完全退出并重新运行 `codex`，新生命周期 hooks 才能稳定接管真实会话。
 - 三态版本已提交并推送 GitHub `main`，功能提交为 `94805e5`（`Map Codex work approval and completion to three lights`）。
+## 2026-08-28：修复当前 Codex 工作时仍亮红灯
+
+- 真实诊断发现当前 `codex.exe` 于 15:56 启动，而 hooks 于 17:46 才安装；当前进程没有热加载 hooks，`runtime/sessions` 只有模拟测试状态，因此旧监听器一直显示红灯。
+- 在当前 Codex rollout 事件流中确认：用户发消息后出现 `task_started`，最终回复后出现 `task_complete`。
+- 新增增量 `TranscriptTracker`：只检查 `~/.codex/sessions` 中的事件类型和时间戳，不使用或保存消息正文；支持 `task_started → working`、`task_complete/turn_aborted → finished`，并兼容名称包含 approval/request 的审批事件。
+- 保留官方 hooks 作为精确审批来源，并将两路状态按“审批黄 > 工作绿 > 完成红”汇总。
+- 自动测试增加到 9 项并全部通过；当前真实会话干跑结果为 `GREEN`。
+- 已停止旧后台监听器，改用独立隐藏的 `pythonw.exe` 监听进程 PID 1852；当前真实会话为工作中，COM8 持续接收绿灯心跳。
+- rollout 读取只扫描最近两天最多 20 个会话并保持增量偏移，避免反复读取历史大文件。

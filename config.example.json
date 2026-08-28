@@ -3,5 +3,6 @@
   "baud_rate": 115200,
   "poll_interval_seconds": 0.75,
   "hook_state_dir": "auto",
-  "hook_state_max_age_seconds": 7200
+  "hook_state_max_age_seconds": 7200,
+  "codex_sessions_dir": "auto"
 }
