@@ -1,5 +1,7 @@
 # Codex Status Traffic Light | Codex 工作状态交通灯
 
+**Language / 语言:** [中文](README.md) | [English](README.en.md)
+
 ## English
 
 An Arduino Uno traffic light that shows the live state of Codex CLI sessions:
