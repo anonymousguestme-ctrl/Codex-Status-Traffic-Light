@@ -1,6 +1,6 @@
-# Codex 等待审批提醒灯｜Arduino 实体红绿灯
+# Codex 工作状态交通灯｜工作绿、审批黄、完成红
 
-> 当 Codex 需要你审批时亮红灯；没有待审批事项时亮绿灯；程序掉线或状态读取异常时亮黄灯。
+> Codex 正在干活时亮绿灯；需要你审查或审批时亮黄灯；完成本轮工作、处于空闲或监听异常时亮红灯。
 
 ## 先说人话：为什么要做这个东西？
 
@@ -15,9 +15,9 @@ Codex 在执行任务时，经常可以自己工作很久，但碰到需要授�
 
 所以这个项目把 Codex 的状态变成桌面上的实体交通灯：
 
-- **绿灯：继续偷懒。** Codex 当前没有等你审批；
-- **红灯：回来点一下。** 至少有一个 Codex 会话正在等待人工审批；
-- **黄灯：系统不确定。** Arduino 没收到电脑心跳、串口断了，或者 Codex hook 状态读取失败。
+- **绿灯：Codex 正在干活。** 你可以继续做别的；
+- **黄灯：Codex 卡在你这里。** 至少有一个会话正在等待人工审查或审批；
+- **红灯：Codex 干完了。** 当前没有仍在工作或等待审批的会话，可以回来看结果。
 
 这不是生产力革命，也不是复杂的智能家居系统。它只是一个非常直接、非常显眼的“别再盯窗口了”装置。
 
@@ -25,30 +25,30 @@ Codex 在执行任务时，经常可以自己工作很久，但碰到需要授�
 
 ## 最后会得到什么效果？
 
-电脑旁边会放着一个三色交通灯模块。Arduino 通过 USB 与 Windows 电脑连接；CMD 或 PowerShell 中运行的 Codex CLI 在准备显示审批提示时触发官方 `PermissionRequest` hook，电脑端监听程序再通过串口告诉 Arduino 应该亮哪盏灯。
+电脑旁边会放着一个三色交通灯模块。Arduino 通过 USB 与 Windows 电脑连接；CMD 或 PowerShell 中运行的 Codex CLI 通过官方生命周期 hooks 报告“开始工作、等待审批、完成回复”，电脑端监听程序再通过串口告诉 Arduino 应该亮哪盏灯。
 
 | 实际状态 | 信号灯 | 你应该做什么 |
 |---|---:|---|
-| 没有 Codex 会话等待审批 | 🟢 绿灯 | 什么都不用做，继续干别的 |
-| 任意一个 CMD/PowerShell Codex CLI 触发 `PermissionRequest` | 🔴 红灯 | 回到对应终端，阅读请求并决定允许或拒绝 |
-| 监听程序未运行、串口断开、hooks 未安装或状态读取失败 | 🟡 黄灯 | 检查程序、USB、COM 端口或 Codex hooks |
+| 任意 Codex 会话已经收到新提示、正在工作 | 🟢 绿灯 | 继续做别的，等它完成 |
+| 任意 Codex 会话触发 `PermissionRequest` | 🟡 黄灯 | 回到对应终端，阅读请求并决定允许或拒绝 |
+| 所有 Codex 会话都完成、尚未开始，或状态读取失败 | 🔴 红灯 | 查看结果；若状态不合理则检查监听程序 |
 
-只有真正需要审批的操作会触发红灯。Codex 的普通提问、正常思考和普通输出不会亮红灯。
+黄灯具有最高优先级：多个终端同时运行时，只要有一个会话等待审批就亮黄灯；否则，只要有一个会话仍在工作就亮绿灯；全部完成才亮红灯。
 
 ### 工作流程
 
 ```mermaid
 flowchart LR
-    A[CMD / PowerShell 中的 Codex CLI] -->|PermissionRequest hook| B[本地审批状态标记]
+    A[CMD / PowerShell 中的 Codex CLI] -->|生命周期 hooks| B[本地会话状态文件]
     B -->|每 0.75 秒读取| C[Windows Python 监听程序]
     C -->|USB 串口 115200 baud| E[Arduino Uno R3]
     E --> D{交通灯模块}
-    D -->|无需处理| G[绿灯]
-    D -->|等待审批| R[红灯]
-    D -->|掉线或异常| Y[黄灯]
+    D -->|工作中| G[绿灯]
+    D -->|等待审批| Y[黄灯]
+    D -->|完成或空闲| R[红灯]
 ```
 
-电脑端每隔约 0.75 秒读取一次状态。Arduino 同时要求电脑持续发送心跳；超过 15 秒收不到消息，就自动亮黄灯，避免程序已经死掉但灯还停留在一个看似正常的绿色状态。
+电脑端每隔约 0.75 秒读取一次状态。Arduino 同时要求电脑持续发送心跳；新版固件超过 15 秒收不到消息会回到红灯，表示 Codex 已不再被确认处于工作状态。
 
 ---
 
@@ -66,7 +66,7 @@ flowchart LR
 
 电脑端安装的是 Codex CLI 用户级 hook，因此无论从 CMD 还是 PowerShell 启动 `codex` 都可以触发同一个信号灯。Arduino 固件本身不依赖 Windows，但当前安装与启动脚本只按 Windows 实现。
 
-Codex hook 格式可能随未来版本变化。如果 Codex 更新后不再触发红灯，请先查看本文“升级后突然失效”一节。
+Codex hook 格式可能随未来版本变化。如果 Codex 更新后灯不再随状态变化，请先查看本文“升级后突然失效”一节。
 
 ---
 
@@ -229,7 +229,7 @@ firmware/codex_traffic_light/codex_traffic_light.ino
 
 ### 上传成功后应该看到什么？
 
-固件启动时默认亮黄灯，因为电脑监听程序还没有建立心跳。这是正常现象，不代表失败。
+新版固件启动时默认亮红灯，因为电脑监听程序还没有报告 Codex 正在工作。这是正常现象。
 
 ### 用串口监视器单独测试三盏灯
 
@@ -258,7 +258,7 @@ OK OFF
 PONG CODEX_TRAFFIC_LIGHT_V1
 ```
 
-注意：超过 15 秒没有继续收到电脑命令，固件会自动回到黄灯。因此手动测试时灯过一会儿变黄是故障保护在工作。
+注意：超过 15 秒没有继续收到电脑命令，固件会自动回到红灯。因此手动测试时灯过一会儿变红是故障保护在工作。
 
 测试完成后关闭串口监视器。监听程序和 Arduino IDE 串口监视器不能同时占用同一个 COM 端口。
 
@@ -280,7 +280,7 @@ const bool ACTIVE_HIGH = false;
 
 ---
 
-## 第四步：安装 Codex CLI 审批 hook
+## 第四步：安装 Codex CLI 状态 hooks
 
 这是监控 CMD/PowerShell Codex 的关键步骤。在项目目录打开 PowerShell：
 
@@ -294,7 +294,7 @@ const bool ACTIVE_HIGH = false;
 2. 安装串口依赖 `pyserial`；
 3. 读取现有的 `C:\Users\你的用户名\.codex\hooks.json`；
 4. 保留其中不属于本项目的 hooks；
-5. 添加 `PermissionRequest`、`PostToolUse`、`Stop`、`SessionStart/End` 等状态 hooks；
+5. 添加 `UserPromptSubmit`、`PermissionRequest`、`PostToolUse`、`Stop`、`SessionStart/End` 等状态 hooks；
 6. 如果原配置存在，先创建带时间戳的备份；
 7. 在项目 `runtime` 目录写入已安装标记。
 
@@ -366,7 +366,7 @@ Arduino 串口：COM5
 信号灯：GREEN
 ```
 
-此 PowerShell 窗口保持运行。按 `Ctrl + C` 可以退出；程序退出前会尝试把灯切到黄灯，之后固件心跳超时也会保证回到黄灯。
+此 PowerShell 窗口保持运行。按 `Ctrl + C` 可以退出；程序退出前会尝试把灯切到红灯，之后新版固件心跳超时也会保证回到红灯。
 
 ---
 
@@ -430,7 +430,7 @@ Codex 状态查询间隔，默认 0.75 秒：
 
 ### `hook_state_dir`
 
-默认的 `auto` 表示使用项目内的 `runtime/approvals`：
+默认的 `auto` 表示使用项目内的 `runtime/sessions`：
 
 ```json
 "hook_state_dir": "auto"
@@ -440,13 +440,13 @@ Codex 状态查询间隔，默认 0.75 秒：
 
 ### `hook_state_max_age_seconds`
 
-审批标记的故障兜底有效期，默认两小时：
+会话状态文件的故障兜底有效期，默认两小时：
 
 ```json
 "hook_state_max_age_seconds": 7200
 ```
 
-正常情况下，审批后的 `PostToolUse` 或 `Stop` hook 会立即清除标记。这个超时只用于 Codex 被强制结束、电脑崩溃等没有机会清理状态的情况。
+每次 hook 都会覆盖该会话的最新状态。这个超时用于 Codex 被强制结束、电脑崩溃等没有机会触发结束 hook 的情况；状态过期后按“完成/空闲”显示红灯。
 
 ---
 
@@ -455,24 +455,22 @@ Codex 状态查询间隔，默认 0.75 秒：
 ### 验证绿灯
 
 1. 启动 `start.ps1`；
-2. 确认 Codex 没有待审批请求；
-3. 应该亮绿灯。
+2. 在新启动的 Codex CLI 中发送一条任务；
+3. `UserPromptSubmit` 触发后应该亮绿灯，并在 Codex 工作期间保持。
 
-### 验证红灯
+### 验证黄灯
 
-最自然的测试方法是在正常使用 Codex 时，等它产生一个需要人工批准的操作。看到 Codex 的审批界面时，实体红灯应在约一秒内亮起。审批或拒绝后，若没有其他会话等待审批，应恢复绿灯。
+最自然的测试方法是在正常使用 Codex 时，等它产生一个需要人工批准的操作。看到 Codex 的审批界面时，实体黄灯应在约一秒内亮起。审批或拒绝后，Codex 继续执行工具时应恢复绿灯。
 
 不要为了测试而批准自己看不懂的危险命令。交通灯只负责提醒，不会替你审批，也不会降低审批本身的重要性。
 
-如果暂时无法自然触发审批，可以使用测试脚本模拟 hook 标记；不要为了测试而批准危险命令。开发者测试方法见后面的“运行测试”。
+如果暂时无法自然触发审批，可以使用后文命令模拟会话状态；不要为了测试而批准危险命令。
 
-### 验证黄灯故障保护
+### 验证红灯
 
-在绿灯正常亮起时：
+等待 Codex 完成本轮回复；`Stop` hook 触发后应在约一秒内亮红灯。停止监听程序或拔掉 USB 后，新版固件也会在 15 秒心跳超时后回到红灯。
 
-1. 按 `Ctrl + C` 停止监听程序，或拔掉 USB 数据连接；
-2. 最迟约 15 秒后应亮黄灯；
-3. 重新连接并启动程序后，应恢复为当前真实状态对应的颜色。
+红灯既表示“工作完成/空闲”，也用作异常时的保守状态；如果 Codex 明明在工作却一直红灯，请检查 hooks、USB 和监听程序。
 
 ---
 
@@ -506,38 +504,29 @@ powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "G:\codex-traff
 
 ---
 
-## 它到底如何判断 Codex 在等审批？
+## 它到底如何判断 Codex 状态？
 
 电脑端不会截图，不做 OCR，也不读取 CMD/PowerShell 屏幕文字。它使用 Codex 官方生命周期 hooks。
 
-当终端中的 Codex 确实准备向用户请求权限时，Codex 会触发：
+本项目将官方 hook 事件映射为三个状态：
 
-```text
-PermissionRequest
-```
+| Hook 事件 | 写入状态 | 灯色 |
+|---|---|---|
+| `UserPromptSubmit` | `working` | 绿灯 |
+| `PermissionRequest` | `approval` | 黄灯 |
+| `PostToolUse` | `working` | 绿灯 |
+| `Stop` | `finished` | 红灯 |
+| `SessionStart` | `finished` | 红灯 |
+| `SessionEnd` | 删除该会话状态 | 由其余会话决定；无会话时红灯 |
 
-本项目的 `hook_state.py mark` 随即写入一个很小的 JSON 标记，只包含：
+每个 Codex 会话在 `runtime/sessions` 下只有一个很小的 JSON 状态文件，只包含：
 
 - `session_id`；
 - `turn_id`；
-- 创建时间；
-- 固定事件名 `PermissionRequest`。
+- 状态和更新时间；
+- hook 事件名。
 
-它不会把请求的命令、理由、提示词或会话正文写入标记。监听程序看到任意有效审批标记后，就向 Arduino 发送：
-
-就发送：
-
-```text
-RED\n
-```
-
-当工具完成、回合停止、会话切换或会话结束时，对应 hook 会清除标记。没有审批标记时发送：
-
-```text
-GREEN\n
-```
-
-如果 hooks 没安装、状态目录损坏或串口失败，则使用 `YELLOW`。Arduino 支持的完整文本命令为：
+它不会把请求的命令、理由、提示词或会话正文写入状态文件。监听程序汇总全部会话，按 `approval > working > finished` 的优先级向 Arduino 发送 `YELLOW`、`GREEN` 或 `RED`。如果 hooks 没安装、状态目录损坏或串口失败，程序使用红灯，避免错误地声称 Codex 仍在工作。Arduino 支持的完整文本命令为：
 
 - `GREEN`
 - `YELLOW`
@@ -547,7 +536,9 @@ GREEN\n
 
 ### 隐私说明
 
-本项目为了判断灯色，只使用本地 hook 产生的审批状态标记；代码不会把 Codex 会话正文上传到项目作者的服务器，也没有项目作者自己的服务器。它不需要 OpenAI API Key。
+本项目为了判断灯色，只使用本地 hooks 产生的会话状态文件；代码不会把 Codex 会话正文上传到项目作者的服务器，也没有项目作者自己的服务器。它不需要 OpenAI API Key。
+
+事件含义和输入格式以 [OpenAI 官方 Codex Hooks 文档](https://learn.chatgpt.com/docs/hooks) 为准：`UserPromptSubmit` 表示提示即将发送，`PermissionRequest` 表示即将请求批准，`PostToolUse` 表示工具输出已经返回，`Stop` 表示主代理完成回复。
 
 安装器会修改用户级 `~/.codex/hooks.json`。它会保留其他 hooks 并在覆盖前备份原文件，但使用前仍应自行阅读 `install_hooks.py` 和 `hook_state.py`，并遵循所在组织的安全政策。
 
@@ -599,9 +590,7 @@ Codex-Traffic-Light/
 预期结果：
 
 ```text
-Ran 4 tests
-OK
-Ran 3 tests
+Ran 8 tests
 OK
 ```
 
@@ -611,26 +600,38 @@ OK
 .\start.ps1 -DryRun -Once
 ```
 
-模拟一次审批出现并验证 `RED`：
+模拟三个状态（每条命令后都可以运行 `start.ps1 -DryRun -Once` 查看）：
 
 ```powershell
 @{
   session_id = 'manual-test'
-  turn_id = 'approval-test'
-  hook_event_name = 'PermissionRequest'
-} | ConvertTo-Json | .\.venv\Scripts\python.exe .\src\hook_state.py mark
+  turn_id = 'manual-turn'
+  hook_event_name = 'UserPromptSubmit'
+} | ConvertTo-Json | .\.venv\Scripts\python.exe .\src\hook_state.py set-working
 
 .\start.ps1 -DryRun -Once
 ```
 
-清除模拟审批并验证 `GREEN`：
+上面应输出 `GREEN`。继续模拟审批并验证 `YELLOW`：
 
 ```powershell
 @{
   session_id = 'manual-test'
-  turn_id = 'approval-test'
-  hook_event_name = 'PostToolUse'
-} | ConvertTo-Json | .\.venv\Scripts\python.exe .\src\hook_state.py clear-turn
+  turn_id = 'manual-turn'
+  hook_event_name = 'PermissionRequest'
+} | ConvertTo-Json | .\.venv\Scripts\python.exe .\src\hook_state.py set-approval
+
+.\start.ps1 -DryRun -Once
+```
+
+最后模拟完成并验证 `RED`：
+
+```powershell
+@{
+  session_id = 'manual-test'
+  turn_id = 'manual-turn'
+  hook_event_name = 'Stop'
+} | ConvertTo-Json | .\.venv\Scripts\python.exe .\src\hook_state.py set-finished
 
 .\start.ps1 -DryRun -Once
 ```
@@ -683,7 +684,7 @@ OK
 
 ### 5. 一直亮黄灯
 
-黄灯意味着“不确定”，按层排查：
+黄灯意味着至少一个会话仍记录为“等待审批”，按层排查：
 
 1. `start.ps1` 窗口是否仍在运行；
 2. 是否打印“Arduino 串口：COMx”；
@@ -698,19 +699,17 @@ OK
 ### 6. 一直亮绿灯，Codex 明明在等审批
 
 - 确认当前界面真的是审批请求，而不是普通提问；
-- 用“运行测试”一节的手动标记命令验证整个红灯链路；
+- 用“运行测试”一节的手动状态命令验证整个黄灯链路；
 - 打开 `C:\Users\你的用户名\.codex\hooks.json`，确认命令路径仍指向当前项目；
 - 如果移动过项目目录，重新运行 `install-hooks.ps1`；
 - 确认新启动的 Codex 已信任 hooks；
 - 检查 Codex 是否刚升级；
 - 查看终端是否报告 hook 执行失败；
-- 查看 `runtime/approvals` 在审批出现时是否生成 JSON 标记。
+- 查看 `runtime/sessions` 中对应会话是否变为 `"state": "approval"`。
 
 ### 7. 一直亮红灯
 
-可能是另一个 CMD/PowerShell Codex 会话留下了审批标记。检查 `runtime/approvals` 中的文件，并查看其他终端里的 Codex。
-
-正常情况下审批结束会自动清理；如果 Codex 被强制终止，标记会在 `hook_state_max_age_seconds` 超时后清理。确认没有真实审批后，也可以停止监听程序并手动删除 `runtime/approvals` 下的 JSON 文件。
+红灯正常表示全部工作完成或空闲。如果 Codex 明明在工作仍是红灯，检查 `runtime/sessions` 是否在发送提示后出现 `"state": "working"`，并确认 Codex 是在安装 hooks 后完全退出再重新启动的。状态文件最长保留 `hook_state_max_age_seconds`；确认没有真实会话后，可以停止监听程序并删除 `runtime/sessions` 下的 JSON 文件。
 
 ### 8. 红、黄、绿对应错了
 
@@ -768,9 +767,9 @@ codex --version
 
 ## 安全提示
 
-- 本项目的红灯只是提醒你“有审批”，不是提醒你“这个审批安全”；
+- 本项目的黄灯只是提醒你“有审批”，不是提醒你“这个审批安全”；
 - 每次仍要阅读 Codex 请求的命令、路径、网络目标和影响范围；
-- 不要因为想让红灯变绿就盲目批准；
+- 不要因为想让黄灯变绿就盲目批准；
 - 接线前断电；
 - 不确定公共针脚时先查资料或测量；
 - 不要让裸露电路板接触金属物体；
@@ -783,8 +782,8 @@ codex --version
 - 当前电脑端仅按 Windows 环境实现；
 - 依赖 Codex CLI 的 `PermissionRequest`、`PostToolUse` 和 `Stop` 等 hook 事件，未来版本可能变化；
 - 当前只监控安装了用户级 hooks 的本机 Codex CLI，不监控网页、手机或其他电脑；
-- 批准后红灯通常会在工具完成并触发 `PostToolUse` 时恢复绿色；长时间运行的已批准命令可能让红灯多保持一段时间；
-- Codex 被强制结束时可能留下标记，默认两小时后自动视为过期；
+- 批准后黄灯通常会在工具完成并触发 `PostToolUse` 时恢复绿色；官方 hooks 没有单独的“审批弹窗刚关闭”事件，因此长时间运行的已批准命令可能让黄灯多保持一段时间；
+- Codex 被强制结束时可能留下会话状态，默认两小时后自动视为过期并显示红灯；
 - 自动串口选择在多个开发板同时连接时需要手动配置；
 - 尚未为不同厂商、不同电平逻辑的所有交通灯模块做兼容性认证；
 - Arduino 断电时当然不会亮任何灯。

@@ -51,7 +51,7 @@ void setup() {
   pinMode(PIN_GREEN, OUTPUT);
   pinMode(PIN_YELLOW, OUTPUT);
   pinMode(PIN_RED, OUTPUT);
-  setLights(false, true, false); // Yellow until the Windows host connects.
+  setLights(false, false, true); // Red means idle/finished until the host reports work.
 
   Serial.begin(115200);
   commandBuffer.reserve(24);
@@ -71,6 +71,6 @@ void loop() {
   }
 
   if (millis() - lastHostMessageMs > HOST_TIMEOUT_MS) {
-    setLights(false, true, false);
+    setLights(false, false, true);
   }
 }

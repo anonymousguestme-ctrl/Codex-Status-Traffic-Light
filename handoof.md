@@ -127,3 +127,16 @@
   约 813 行 README，以及旧 app-server 入口的删除。
 - 已通过 fast-forward 推送到 GitHub `origin/main`，远端 main 已确认指向 `83a1241`。
 - 本机 `config.json`、`.venv`、`runtime` 审批标记与监听日志均被忽略，未上传 GitHub。
+## 2026-08-28：调整三色语义（进行中）
+
+- 已确认用户要求的新语义：Codex 工作中亮绿灯、需要审批亮黄灯、完成本轮工作亮红灯。
+- 已检查仓库状态和现有实现；当前旧版仍是“审批红、无审批绿、异常黄”，接下来将整体替换为会话三态状态机。
+- 已实现会话三态：`UserPromptSubmit/PostToolUse → working → GREEN`、`PermissionRequest → approval → YELLOW`、`Stop/SessionStart → finished → RED`、`SessionEnd → 删除会话状态`。
+- 已实现多会话优先级：审批（黄）高于工作（绿），全部完成或无会话时为红。
+- 已把 Arduino 新版固件的启动状态与 15 秒心跳超时状态改为红灯。
+- 已更新自动测试和 README 的主要状态说明；8 项测试全部通过。
+- 已安装 Arduino CLI 1.5.1 到项目内忽略提交的 `tools/arduino-cli`，没有把运行工具散落到其他项目目录。
+- 已重新安装用户级 Codex hooks，配置文件为 `C:\Users\anony\.codex\hooks.json`，原配置备份为 `hooks.json.backup-20260828-174623`。
+- 已停止旧监听器，使用 `arduino:avr:uno` 编译固件并成功上传到 COM8；串口 `PING` 返回 `PONG CODEX_TRAFFIC_LIGHT_V1`。
+- 已启动新版隐藏监听器（PowerShell PID 48924），并依次模拟验证 `working → GREEN`、`approval → YELLOW`、`finished → RED`；最终保留红灯状态。
+- 注意：安装 hooks 前已经打开的 Codex CLI 进程需要完全退出并重新运行 `codex`，新生命周期 hooks 才能稳定接管真实会话。

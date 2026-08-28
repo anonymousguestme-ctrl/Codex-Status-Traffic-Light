@@ -17,12 +17,12 @@ HOOK_SCRIPT = PROJECT_ROOT / "src" / "hook_state.py"
 VENV_PYTHON = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
 INSTALL_MARKER = PROJECT_ROOT / "runtime" / "hooks-installed.json"
 EVENT_ACTIONS = {
-    "PermissionRequest": "mark",
-    "PostToolUse": "clear-turn",
-    "Stop": "clear-turn",
-    "UserPromptSubmit": "clear-session",
-    "SessionStart": "clear-session",
-    "SessionEnd": "clear-session",
+    "UserPromptSubmit": "set-working",
+    "PermissionRequest": "set-approval",
+    "PostToolUse": "set-working",
+    "Stop": "set-finished",
+    "SessionStart": "set-finished",
+    "SessionEnd": "remove-session",
 }
 
 
@@ -79,7 +79,7 @@ def install(config: dict[str, Any]) -> None:
             "timeout": 5,
         }
         if event == "PermissionRequest":
-            handler["statusMessage"] = "Lighting Codex approval signal"
+            handler["statusMessage"] = "Codex is waiting for your approval"
         hooks.setdefault(event, []).append({"hooks": [handler]})
 
 

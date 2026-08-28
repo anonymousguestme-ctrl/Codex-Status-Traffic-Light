@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Maintain privacy-minimal state markers for Codex CLI lifecycle hooks."""
+"""Maintain privacy-minimal per-session state for Codex CLI hooks."""
 
 from __future__ import annotations
 
@@ -12,14 +12,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_STATE_DIR = PROJECT_ROOT / "runtime" / "approvals"
+DEFAULT_STATE_DIR = PROJECT_ROOT / "runtime" / "sessions"
+VALID_STATES = ("working", "approval", "finished")
 
 
 def safe_id(value: Any) -> str:
-    text = str(value or "unknown")
-    return re.sub(r"[^A-Za-z0-9_.-]", "_", text)[:160]
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", str(value or "unknown"))[:160]
 
 
 def state_dir() -> Path:
@@ -27,37 +26,30 @@ def state_dir() -> Path:
     return Path(configured) if configured else DEFAULT_STATE_DIR
 
 
-def marker_path(data: dict[str, Any]) -> Path:
-    session = safe_id(data.get("session_id"))
-    turn = safe_id(data.get("turn_id"))
-    return state_dir() / f"{session}__{turn}.json"
+def state_path(data: dict[str, Any]) -> Path:
+    return state_dir() / f"{safe_id(data.get('session_id'))}.json"
 
 
-def mark(data: dict[str, Any]) -> None:
+def set_state(data: dict[str, Any], state: str) -> None:
+    if state not in VALID_STATES:
+        raise ValueError(f"Unsupported state: {state}")
     directory = state_dir()
     directory.mkdir(parents=True, exist_ok=True)
-    marker = marker_path(data)
+    target = state_path(data)
     payload = {
         "session_id": data.get("session_id"),
         "turn_id": data.get("turn_id"),
-        "created_at_unix": time.time(),
-        "hook_event_name": "PermissionRequest",
+        "state": state,
+        "updated_at_unix": time.time(),
+        "hook_event_name": data.get("hook_event_name"),
     }
-    temporary = marker.with_suffix(f".{os.getpid()}.tmp")
+    temporary = target.with_suffix(f".{os.getpid()}.tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    os.replace(temporary, marker)
+    os.replace(temporary, target)
 
 
-def clear_turn(data: dict[str, Any]) -> None:
-    marker_path(data).unlink(missing_ok=True)
-
-
-def clear_session(data: dict[str, Any]) -> None:
-    directory = state_dir()
-    session = safe_id(data.get("session_id"))
-    if directory.is_dir():
-        for marker in directory.glob(f"{session}__*.json"):
-            marker.unlink(missing_ok=True)
+def remove_session(data: dict[str, Any]) -> None:
+    state_path(data).unlink(missing_ok=True)
 
 
 def load_input() -> dict[str, Any]:
@@ -67,18 +59,13 @@ def load_input() -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("mark", "clear-turn", "clear-session"))
+    parser.add_argument("action", choices=("set-working", "set-approval", "set-finished", "remove-session"))
     args = parser.parse_args()
     data = load_input()
-
-    if args.action == "mark":
-        mark(data)
-    elif args.action == "clear-turn":
-        clear_turn(data)
+    if args.action == "remove-session":
+        remove_session(data)
     else:
-        clear_session(data)
-
-    # Stop hooks require valid JSON on stdout. Empty JSON is harmless for all clear hooks.
+        set_state(data, args.action.removeprefix("set-"))
     if data.get("hook_event_name") == "Stop":
         print("{}")
     return 0
