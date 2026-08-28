@@ -118,3 +118,12 @@
   `GREEN`，待处理标记数量为 0。
 - 当前 CMD 中已运行的 Codex 进程是在 hooks 安装前启动的；必须完全退出并重新运行
   `codex`，审查并信任 hook 后，真实审批事件才能驱动红灯。
+
+## 步骤 12：CLI hook 修正版发布（完成）
+
+- 已创建提交 `83a1241b07fa95433e14cd736456f17e7f6fb910`，提交说明为
+  `Monitor terminal Codex approvals with hooks`。
+- 提交包含官方 PermissionRequest hook 架构、安装/卸载器、7 项测试、COM 配置说明、
+  约 813 行 README，以及旧 app-server 入口的删除。
+- 已通过 fast-forward 推送到 GitHub `origin/main`，远端 main 已确认指向 `83a1241`。
+- 本机 `config.json`、`.venv`、`runtime` 审批标记与监听日志均被忽略，未上传 GitHub。
