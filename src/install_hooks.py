@@ -76,7 +76,7 @@ def install(config: dict[str, Any]) -> None:
         handler: dict[str, Any] = {
             "type": "command",
             "command": hook_command(action),
-            "timeout": 5,
+            "timeout": 3,
         }
         if event == "PermissionRequest":
             handler["statusMessage"] = "Codex is waiting for your approval"

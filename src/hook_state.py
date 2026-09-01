@@ -84,8 +84,10 @@ def main() -> int:
             remove_session(data)
         else:
             set_state(data, args.action.removeprefix("set-"))
-        if data.get("hook_event_name") == "Stop":
-            print("{}")
+        # Command hooks have a JSON response contract. Returning an explicit
+        # empty object keeps Codex from treating a successful state update as
+        # a failed PostToolUse hook on clients that validate hook output.
+        print("{}")
     except Exception as exc:
         # A telemetry/status hook must never turn a successful Codex tool call
         # into a reported hook failure.
